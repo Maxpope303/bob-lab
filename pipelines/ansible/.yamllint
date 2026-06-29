@@ -1,0 +1,12 @@
+---
+# .yamllint configuration for this Ansible project
+extends: default
+
+rules:
+  line-length:
+    max: 120
+  truthy:
+    allowed-values: ['true', 'false']
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1

@@ -1,0 +1,77 @@
+{{- if .Values.reactUi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ui
+  labels:
+    app: {{ .Release.Name }}-ui
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-ui
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-ui
+        release: {{ .Release.Name }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          image: "{{ .Values.imageRegistry }}/{{ .Values.imageRepository }}/{{ .Values.reactUi.image.name }}:{{ .Values.reactUi.image.tag }}"
+          imagePullPolicy: {{ .Values.reactUi.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.reactUi.service.port }}
+              protocol: TCP
+          env:
+            - name: VITE_API_BASE_URL
+              value: "http://{{ .Release.Name }}-java-backend:{{ .Values.javaBackend.service.port }}"
+          resources:
+            {{- toYaml .Values.reactUi.resources | nindent 12 }}
+{{- end }}
+---
+{{- if .Values.analytics.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-analytics
+  labels:
+    app: {{ .Release.Name }}-analytics
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-analytics
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-analytics
+        release: {{ .Release.Name }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: analytics
+          image: "{{ .Values.imageRegistry }}/{{ .Values.imageRepository }}/{{ .Values.analytics.image.name }}:{{ .Values.analytics.image.tag }}"
+          imagePullPolicy: {{ .Values.analytics.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.analytics.service.port }}
+              protocol: TCP
+          env:
+            - name: PHARMACY_API_BASE
+              value: "http://{{ .Release.Name }}-java-backend:{{ .Values.javaBackend.service.port }}/simple-pharmacy"
+          resources:
+            {{- toYaml .Values.analytics.resources | nindent 12 }}
+{{- end }}

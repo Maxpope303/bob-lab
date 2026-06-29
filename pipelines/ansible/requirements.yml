@@ -1,0 +1,18 @@
+---
+# requirements.yml
+# Install with: ansible-galaxy collection install -r requirements.yml
+#
+# These collections are required by the playbooks and roles in this project.
+
+collections:
+  # POSIX-platform modules: firewalld, timezone, sysctl
+  - name: ansible.posix
+    version: ">=1.5.4"
+
+  # General-purpose modules: timezone, ini_file, etc.
+  - name: community.general
+    version: ">=8.0.0"
+
+  # Podman modules: podman_container, podman_image, podman_network
+  - name: containers.podman
+    version: ">=1.12.0"

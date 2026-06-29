@@ -1,0 +1,39 @@
+{{- if .Values.javaBackend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-java-backend
+  labels:
+    app: {{ .Release.Name }}-java-backend
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-java-backend
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-java-backend
+        release: {{ .Release.Name }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: java-backend
+          image: "{{ .Values.imageRegistry }}/{{ .Values.imageRepository }}/{{ .Values.javaBackend.image.name }}:{{ .Values.javaBackend.image.tag }}"
+          imagePullPolicy: {{ .Values.javaBackend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.javaBackend.service.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.javaBackend.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.javaBackend.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.javaBackend.resources | nindent 12 }}
+{{- end }}

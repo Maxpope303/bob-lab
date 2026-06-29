@@ -1,0 +1,40 @@
+---
+# playbooks/deploy-liberty.yml
+# Deploys the modernized pharmacy app to an OpenLiberty server.
+
+- name: Deploy Simple Pharmacy to Liberty
+  hosts: liberty_servers
+  become: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/liberty_servers.yml"
+
+  tasks:
+    - name: Ensure Liberty service is running
+      ansible.builtin.service:
+        name: wlp
+        state: started
+        enabled: true
+
+    - name: Copy pharmacy WAR to Liberty apps directory
+      ansible.builtin.copy:
+        src: "{{ war_file_path }}"
+        dest: "{{ liberty_apps_dir }}/simple-pharmacy.war"
+        owner: "{{ liberty_user }}"
+        group: "{{ liberty_group }}"
+        mode: "0644"
+      notify: Restart Liberty
+
+    - name: Wait for application to be available
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:9080/simple-pharmacy/"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 12
+      delay: 10
+
+  handlers:
+    - name: Restart Liberty
+      ansible.builtin.service:
+        name: wlp
+        state: restarted

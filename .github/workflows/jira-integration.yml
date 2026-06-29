@@ -1,0 +1,140 @@
+name: Jira Integration
+
+on:
+  push:
+    branches:
+      - demo-java8-baseline
+      - demo-modernized
+      - main
+  pull_request:
+    types: [opened, closed, reopened]
+  workflow_run:
+    workflows:
+      - "Java Modernization CI/CD Pipeline"
+      - "Node React CI/CD Pipeline"
+      - "Python Flask CI/CD Pipeline"
+      - "Terraform Infrastructure Pipeline"
+      - "Helm Chart Pipeline"
+      - "Ansible Playbook Pipeline"
+    types: [completed]
+
+env:
+  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+  JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+  JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+
+jobs:
+  extract-issue-key:
+    name: Extract Jira Issue Key
+    runs-on: ubuntu-latest
+    outputs:
+      issue-key: ${{ steps.extract.outputs.issue-key }}
+      has-issue: ${{ steps.extract.outputs.has-issue }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - name: Extract Issue Key
+        id: extract
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            ISSUE_KEY=$(echo "$PR_TITLE" | grep -oE "$JIRA_PROJECT_KEY-[0-9]+" | head -1)
+          fi
+          if [ -z "$ISSUE_KEY" ]; then
+            ISSUE_KEY=$(git log --format=%s -n 10 | grep -oE "$JIRA_PROJECT_KEY-[0-9]+" | head -1)
+          fi
+          if [ ! -z "$ISSUE_KEY" ]; then
+            echo "issue-key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+            echo "has-issue=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-issue=false" >> $GITHUB_OUTPUT
+          fi
+
+  update-jira-build-status:
+    name: Update Jira with Build Status
+    runs-on: ubuntu-latest
+    needs: extract-issue-key
+    if: needs.extract-issue-key.outputs.has-issue == 'true' && github.event_name == 'push'
+
+    steps:
+      - name: Get Workflow Status
+        id: workflow
+        run: |
+          WORKFLOW_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?event=push&branch=${{ github.ref_name }}&per_page=1" \
+            | jq -r '.workflow_runs[0].conclusion // "in_progress"')
+          echo "status=$WORKFLOW_STATUS" >> $GITHUB_OUTPUT
+
+      - name: Comment on Jira Issue
+        env:
+          ISSUE_KEY: ${{ needs.extract-issue-key.outputs.issue-key }}
+          WORKFLOW_STATUS: ${{ steps.workflow.outputs.status }}
+        run: |
+          if [ "$WORKFLOW_STATUS" = "success" ]; then
+            STATUS_EMOJI="✅"; STATUS_TEXT="Build Successful"
+          elif [ "$WORKFLOW_STATUS" = "failure" ]; then
+            STATUS_EMOJI="❌"; STATUS_TEXT="Build Failed"
+          else
+            STATUS_EMOJI="⏳"; STATUS_TEXT="Build In Progress"
+          fi
+          COMMENT_BODY=$(cat <<EOF
+          {"body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"$STATUS_EMOJI $STATUS_TEXT | Branch: ${{ github.ref_name }} | Commit: ${{ github.sha }} | Actor: ${{ github.actor }}","marks":[{"type":"strong"}]}]}]}}
+          EOF
+          )
+          curl -s -X POST \
+            -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$COMMENT_BODY" \
+            "$JIRA_BASE_URL/rest/api/3/issue/$ISSUE_KEY/comment"
+
+  transition-jira-issue:
+    name: Transition Jira Issue
+    runs-on: ubuntu-latest
+    needs: extract-issue-key
+    if: needs.extract-issue-key.outputs.has-issue == 'true' && github.event_name == 'pull_request'
+
+    steps:
+      - name: Determine Transition
+        id: transition
+        run: |
+          if [ "${{ github.event.action }}" = "opened" ]; then
+            echo "transition-name=In Review" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.action }}" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "transition-name=Done" >> $GITHUB_OUTPUT
+          else
+            echo "transition-name=To Do" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get and Apply Transition
+        env:
+          ISSUE_KEY: ${{ needs.extract-issue-key.outputs.issue-key }}
+        run: |
+          TRANSITIONS=$(curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
+            "$JIRA_BASE_URL/rest/api/3/issue/$ISSUE_KEY/transitions")
+          TRANSITION_ID=$(echo "$TRANSITIONS" | jq -r ".transitions[] | select(.name==\"${{ steps.transition.outputs.transition-name }}\") | .id")
+          if [ ! -z "$TRANSITION_ID" ]; then
+            curl -s -X POST \
+              -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "$JIRA_BASE_URL/rest/api/3/issue/$ISSUE_KEY/transitions"
+          fi
+
+  jira-summary:
+    name: Jira Integration Summary
+    runs-on: ubuntu-latest
+    needs: [extract-issue-key, update-jira-build-status, transition-jira-issue]
+    if: always() && needs.extract-issue-key.outputs.has-issue == 'true'
+    steps:
+      - name: Summary
+        run: |
+          echo "# Jira Integration Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Issue**: ${{ needs.extract-issue-key.outputs.issue-key }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+
+# Made with Bob

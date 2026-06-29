@@ -1,0 +1,11 @@
+---
+# roles/was-baseline/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart WAS
+  ansible.builtin.service:
+    name: was
+    state: restarted

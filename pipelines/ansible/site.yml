@@ -1,0 +1,17 @@
+---
+# site.yml — Master playbook. Imports all roles for a full environment setup.
+# Usage: ansible-playbook site.yml -i inventories/dev/hosts.ini
+
+- name: Provision and configure tWAS (legacy baseline)
+  hosts: twas_servers
+  become: true
+  roles:
+    - was-baseline
+    - harden-os
+
+- name: Provision and configure Liberty (modernized target)
+  hosts: liberty_servers
+  become: true
+  roles:
+    - liberty-runtime
+    - harden-os

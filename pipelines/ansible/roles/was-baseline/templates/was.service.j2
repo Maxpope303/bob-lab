@@ -1,0 +1,16 @@
+[Unit]
+Description=IBM WebSphere Application Server Traditional — server1
+After=network.target
+
+[Service]
+Type=forking
+User={{ was_user }}
+Group={{ was_group }}
+ExecStart={{ was_profile_dir }}/bin/startServer.sh server1
+ExecStop={{ was_profile_dir }}/bin/stopServer.sh server1
+PIDFile={{ was_profile_dir }}/logs/server1/server1.pid
+Restart=on-failure
+RestartSec=15s
+
+[Install]
+WantedBy=multi-user.target

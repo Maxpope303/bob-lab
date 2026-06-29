@@ -1,0 +1,187 @@
+name: Helm Chart Pipeline
+
+on:
+  push:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/helm/**'
+  pull_request:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/helm/**'
+  # Triggered automatically when the Java pipeline succeeds on main/demo-modernized
+  workflow_run:
+    workflows: ["Java Modernization CI/CD Pipeline"]
+    branches: [main, demo-modernized]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target K8s environment'
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      action:
+        description: 'Helm action'
+        required: true
+        type: choice
+        options: [diff, upgrade, rollback]
+      image_tag:
+        description: 'Image tag to deploy (defaults to triggering commit SHA)'
+        required: false
+        type: string
+
+env:
+  WORKING_DIR: pipelines/helm
+  HELM_VERSION: 'v3.14.2'
+
+jobs:
+  lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Helm lint — simple-pharmacy chart
+        run: helm lint ${{ env.WORKING_DIR }}/simple-pharmacy
+
+      - name: Helm template — validate rendered manifests
+        run: |
+          helm template pharmacy-test ${{ env.WORKING_DIR }}/simple-pharmacy \
+            --set ingress.enabled=true \
+            --set ingress.host=pharmacy.example.com \
+            > /tmp/rendered.yaml
+          echo "Rendered manifest line count: $(wc -l < /tmp/rendered.yaml)"
+
+  kubeval:
+    name: Manifest Validation (kubeval)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install kubeval
+        run: |
+          curl -sL https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz | tar xz
+          sudo mv kubeval /usr/local/bin/
+
+      - name: Render and validate manifests
+        run: |
+          helm template pharmacy-ci ${{ env.WORKING_DIR }}/simple-pharmacy \
+            --set ingress.enabled=true \
+            | kubeval --strict --kubernetes-version 1.28.0
+        continue-on-error: true
+
+  polaris:
+    name: Policy Audit (Polaris)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install Polaris CLI
+        run: |
+          curl -sL https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz | tar xz
+          sudo mv polaris /usr/local/bin/
+
+      - name: Render manifests
+        run: |
+          helm template pharmacy-ci ${{ env.WORKING_DIR }}/simple-pharmacy > /tmp/rendered.yaml
+
+      - name: Run Polaris audit
+        run: polaris audit --audit-path /tmp/rendered.yaml --format pretty
+        continue-on-error: true
+
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: [lint, kubeval, polaris]
+    # Runs when: Java pipeline succeeded on main/demo-modernized, OR a direct push to helm/, OR manual dispatch
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/demo-modernized')) ||
+      github.event_name == 'workflow_dispatch'
+    environment:
+      name: dev
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Resolve the image tag: workflow_dispatch input > workflow_run SHA > current SHA
+      - name: Resolve image tag
+        id: resolve-tag
+        run: |
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.DEV_KUBECONFIG }}
+
+      - name: Helm upgrade (dev)
+        run: |
+          echo "Deploying image tag: ${{ steps.resolve-tag.outputs.tag }}"
+          helm upgrade --install simple-pharmacy ${{ env.WORKING_DIR }}/simple-pharmacy \
+            --namespace pharmacy-dev \
+            --create-namespace \
+            --set javaBackend.image.tag=${{ steps.resolve-tag.outputs.tag }} \
+            --set reactUi.image.tag=${{ steps.resolve-tag.outputs.tag }} \
+            --set analytics.image.tag=${{ steps.resolve-tag.outputs.tag }} \
+            --wait \
+            --timeout 5m
+
+      - name: Report deployment to summary
+        if: always()
+        run: |
+          echo "# Helm Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag**: \`${{ steps.resolve-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: pharmacy-dev" >> $GITHUB_STEP_SUMMARY
+
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, kubeval, polaris]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "# Helm Chart Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lint**: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Kubeval**: ${{ needs.kubeval.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Polaris**: ${{ needs.polaris.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+# Made with Bob

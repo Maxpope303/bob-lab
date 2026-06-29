@@ -1,0 +1,18 @@
+---
+# playbooks/provision-twas.yml
+# Provisions a WebSphere Traditional (tWAS) server for the legacy baseline demo.
+
+- name: Provision tWAS server
+  hosts: twas_servers
+  become: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/twas_servers.yml"
+
+  pre_tasks:
+    - name: Update package cache
+      ansible.builtin.package:
+        update_cache: true
+      changed_when: false
+
+  roles:
+    - was-baseline

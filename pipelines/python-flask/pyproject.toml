@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=pharmacy_analytics --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["pharmacy_analytics"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 30

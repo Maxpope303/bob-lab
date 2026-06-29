@@ -1,0 +1,4 @@
+[submodule "simple-pharmacy-twas-j8-struts-V2"]
+	path = simple-pharmacy-twas-j8-struts-V2
+	url = https://github.com/Maxpope303/Demo-area.git
+	branch = demo-modernized

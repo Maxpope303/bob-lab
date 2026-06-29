@@ -1,0 +1,22 @@
+---
+# roles/liberty-runtime/molecule/default/molecule.yml
+driver:
+  name: docker
+
+platforms:
+  - name: liberty-runtime-test
+    image: registry.access.redhat.com/ubi9/ubi:latest
+    pre_build_image: true
+    privileged: false
+
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      liberty-runtime-test:
+        liberty_install_dir: /opt/ibm/wlp
+        liberty_user: root
+        liberty_group: root
+
+verifier:
+  name: ansible

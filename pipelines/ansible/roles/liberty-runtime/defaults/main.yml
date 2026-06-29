@@ -1,0 +1,16 @@
+---
+# roles/liberty-runtime/defaults/main.yml
+
+liberty_install_dir: /opt/ibm/wlp
+liberty_user_dir: "{{ liberty_install_dir }}/usr"
+liberty_apps_dir: "{{ liberty_user_dir }}/servers/defaultServer/apps"
+liberty_user: wlpadmin
+liberty_group: wlpadmin
+
+# Liberty kernel download — WebSphere Liberty 24.0.0.6 kernel zip (public)
+# Override in group_vars/host_vars to pin a specific version or use an internal mirror
+liberty_download_url: "https://public.dhe.ibm.com/ibmdl/export/pub/software/websphere/wasdev/downloads/wlp/24.0.0.6/wlp-kernel-24.0.0.6.zip"
+liberty_download_checksum: "sha256:skip"   # set a real checksum in production
+
+# Path to the WAR file on the Ansible controller
+war_file_path: "{{ playbook_dir }}/../../../simple-pharmacy-twas-j8-struts-V2/target/simple-pharmacy.war"

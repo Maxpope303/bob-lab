@@ -1,0 +1,11 @@
+---
+# group_vars/twas_servers.yml — Variables for tWAS hosts.
+
+was_install_dir: /opt/IBM/WebSphere/AppServer
+was_profile_dir: "{{ was_install_dir }}/profiles/AppSrv01"
+was_apps_dir: "{{ was_profile_dir }}/installedApps/DefaultCell01"
+was_user: wasadmin
+was_group: wasadmin
+
+# Version of the IBM Semeru JDK to install
+jdk_rpm_path: /opt/ibm-semeru-open-8-jdk.rpm

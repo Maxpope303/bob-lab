@@ -1,0 +1,130 @@
+---
+# roles/liberty-runtime/tasks/main.yml
+# Installs IBM WebSphere Liberty and deploys the pharmacy application.
+
+- name: Ensure required packages are present
+  ansible.builtin.package:
+    name:
+      - unzip
+      - curl
+      - java-17-openjdk-headless
+    state: present
+
+- name: Create Liberty group
+  ansible.builtin.group:
+    name: "{{ liberty_group }}"
+    state: present
+
+- name: Create Liberty user
+  ansible.builtin.user:
+    name: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    shell: /bin/bash
+    home: "/home/{{ liberty_user }}"
+    create_home: true
+    state: present
+
+- name: Ensure Liberty parent directory exists
+  ansible.builtin.file:
+    path: "{{ liberty_install_dir | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check if Liberty is already installed
+  ansible.builtin.stat:
+    path: "{{ liberty_install_dir }}/bin/server"
+  register: liberty_binary
+
+- name: Download Liberty kernel archive
+  ansible.builtin.get_url:
+    url: "{{ liberty_download_url }}"
+    dest: "/tmp/wlp-kernel.zip"
+    checksum: "{{ liberty_download_checksum | default(omit) }}"
+    mode: "0644"
+  when: not liberty_binary.stat.exists
+
+- name: Unzip Liberty into install directory
+  ansible.builtin.unarchive:
+    src: "/tmp/wlp-kernel.zip"
+    dest: "{{ liberty_install_dir | dirname }}"
+    remote_src: true
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    creates: "{{ liberty_install_dir }}/bin/server"
+  when: not liberty_binary.stat.exists
+
+- name: Fix ownership of Liberty install directory
+  ansible.builtin.file:
+    path: "{{ liberty_install_dir }}"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    recurse: true
+    state: directory
+
+- name: Create defaultServer
+  ansible.builtin.command:
+    cmd: "{{ liberty_install_dir }}/bin/server create defaultServer"
+    creates: "{{ liberty_user_dir }}/servers/defaultServer"
+  become_user: "{{ liberty_user }}"
+
+- name: Ensure Liberty apps directory exists
+  ansible.builtin.file:
+    path: "{{ liberty_apps_dir }}"
+    state: directory
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    mode: "0755"
+
+- name: Deploy server.xml
+  ansible.builtin.copy:
+    src: server.xml
+    dest: "{{ liberty_user_dir }}/servers/defaultServer/server.xml"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    mode: "0644"
+  notify: Restart Liberty
+
+- name: Install Liberty features declared in server.xml
+  ansible.builtin.command:
+    cmd: "{{ liberty_install_dir }}/bin/featureUtility installServerFeatures defaultServer --acceptLicense"
+  become_user: "{{ liberty_user }}"
+  register: feature_install
+  changed_when: "'installed' in feature_install.stdout | lower"
+  failed_when: feature_install.rc != 0
+
+- name: Deploy pharmacy WAR
+  ansible.builtin.copy:
+    src: "{{ war_file_path }}"
+    dest: "{{ liberty_apps_dir }}/simple-pharmacy.war"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_group }}"
+    mode: "0644"
+  notify: Restart Liberty
+
+- name: Create systemd service unit for Liberty
+  ansible.builtin.template:
+    src: wlp.service.j2
+    dest: /etc/systemd/system/wlp.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Liberty
+
+- name: Enable and start Liberty service
+  ansible.builtin.service:
+    name: wlp
+    state: started
+    enabled: true
+
+- name: Wait for pharmacy application to respond
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:9080/simple-pharmacy/"
+    status_code: 200
+  register: health_check
+  until: health_check.status == 200
+  retries: 12
+  delay: 10

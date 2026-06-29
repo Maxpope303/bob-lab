@@ -1,0 +1,213 @@
+name: Ansible Playbook Pipeline
+
+on:
+  push:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/ansible/**'
+  pull_request:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/ansible/**'
+  # Triggered automatically when the Java pipeline succeeds on main/demo-modernized
+  workflow_run:
+    workflows: ["Java Modernization CI/CD Pipeline"]
+    branches: [main, demo-modernized]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      playbook:
+        description: 'Playbook to run'
+        required: true
+        type: choice
+        options:
+          - site.yml
+          - playbooks/provision-twas.yml
+          - playbooks/deploy-liberty.yml
+          - playbooks/harden-os.yml
+          - playbooks/podman-demo.yml
+      image_tag:
+        description: 'Image tag to deploy (defaults to triggering commit SHA)'
+        required: false
+        type: string
+
+env:
+  WORKING_DIR: pipelines/ansible
+
+jobs:
+  lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible and lint tools
+        run: pip install ansible ansible-lint yamllint
+
+      - name: Install Galaxy collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint .
+        continue-on-error: true
+
+      - name: Run ansible-lint
+        run: ansible-lint
+        continue-on-error: true
+
+  syntax-check:
+    name: Syntax Check
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Install Galaxy collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Syntax check — site.yml
+        run: ansible-playbook site.yml --syntax-check -i inventories/dev/hosts.ini
+
+      - name: Syntax check — provision-twas.yml
+        run: ansible-playbook playbooks/provision-twas.yml --syntax-check -i inventories/dev/hosts.ini
+
+      - name: Syntax check — deploy-liberty.yml
+        run: ansible-playbook playbooks/deploy-liberty.yml --syntax-check -i inventories/dev/hosts.ini
+
+      - name: Syntax check — podman-demo.yml
+        run: ansible-playbook playbooks/podman-demo.yml --syntax-check -i inventories/dev/hosts.ini
+
+  molecule-test:
+    name: Molecule Role Tests
+    runs-on: ubuntu-latest
+    needs: syntax-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Molecule and dependencies
+        run: pip install ansible molecule molecule-plugins[docker]
+
+      - name: Run Molecule tests — was-baseline role
+        working-directory: ${{ env.WORKING_DIR }}/roles/was-baseline
+        run: molecule test
+        continue-on-error: true
+
+      - name: Run Molecule tests — liberty-runtime role
+        working-directory: ${{ env.WORKING_DIR }}/roles/liberty-runtime
+        run: molecule test
+        continue-on-error: true
+
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: [lint, syntax-check]
+    # Runs when: Java pipeline succeeded, OR manual dispatch
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
+    environment:
+      name: dev
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Resolve image tag: manual input > workflow_run SHA > current SHA
+      - name: Resolve image tag
+        id: resolve-tag
+        run: |
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Ansible and Galaxy collections
+        run: |
+          pip install ansible
+          ansible-galaxy collection install -r requirements.yml
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # When triggered by Java pipeline, run the Liberty deploy playbook automatically
+      - name: Deploy Liberty (workflow_run trigger)
+        if: github.event_name == 'workflow_run'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "Deploying image tag: ${{ steps.resolve-tag.outputs.tag }}"
+          ansible-playbook playbooks/deploy-liberty.yml \
+            -i inventories/dev/hosts.ini \
+            --private-key ~/.ssh/id_rsa \
+            -u ansible \
+            -e "liberty_image_tag=${{ steps.resolve-tag.outputs.tag }}"
+
+      # When triggered manually, run whichever playbook was chosen
+      - name: Run chosen playbook (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "Running: ${{ github.event.inputs.playbook }} with tag: ${{ steps.resolve-tag.outputs.tag }}"
+          ansible-playbook ${{ github.event.inputs.playbook }} \
+            -i inventories/dev/hosts.ini \
+            --private-key ~/.ssh/id_rsa \
+            -u ansible \
+            -e "liberty_image_tag=${{ steps.resolve-tag.outputs.tag }}"
+
+      - name: Report deployment to summary
+        if: always()
+        run: |
+          echo "# Ansible Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag**: \`${{ steps.resolve-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Playbook**: ${{ github.event_name == 'workflow_run' && 'deploy-liberty.yml (auto)' || github.event.inputs.playbook }}" >> $GITHUB_STEP_SUMMARY
+
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, syntax-check, molecule-test]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "# Ansible Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lint**: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Syntax Check**: ${{ needs.syntax-check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Molecule**: ${{ needs.molecule-test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+# Made with Bob

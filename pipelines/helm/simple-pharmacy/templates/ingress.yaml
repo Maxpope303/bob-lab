@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+    release: {{ .Release.Name }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-ui
+                port:
+                  number: {{ .Values.reactUi.service.port }}
+          - path: /simple-pharmacy
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-java-backend
+                port:
+                  number: {{ .Values.javaBackend.service.port }}
+          - path: /api/v1/analytics
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-analytics
+                port:
+                  number: {{ .Values.analytics.service.port }}
+{{- end }}

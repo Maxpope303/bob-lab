@@ -1,0 +1,16 @@
+[Unit]
+Description=IBM WebSphere Liberty Application Server
+After=network.target
+
+[Service]
+Type=forking
+User={{ liberty_user }}
+Group={{ liberty_group }}
+ExecStart={{ liberty_install_dir }}/bin/server start defaultServer
+ExecStop={{ liberty_install_dir }}/bin/server stop defaultServer
+PIDFile={{ liberty_user_dir }}/servers/defaultServer/.pid
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

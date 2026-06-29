@@ -1,0 +1,5 @@
+---
+# roles/liberty-runtime/files/server.xml
+# Minimal Liberty server config — copied from the AMA-generated migration artifact.
+# The real server.xml lives in simple-pharmacy-twas-j8-struts-V2/src/main/liberty/config/
+# This is included here so the Ansible role is self-contained during testing.

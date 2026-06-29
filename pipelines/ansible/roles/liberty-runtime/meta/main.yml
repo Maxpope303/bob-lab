@@ -1,0 +1,19 @@
+---
+# roles/liberty-runtime/meta/main.yml
+
+galaxy_info:
+  author: devops-team
+  description: Installs IBM WebSphere Liberty and deploys the Simple Pharmacy WAR
+  license: Apache-2.0
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+
+dependencies: []

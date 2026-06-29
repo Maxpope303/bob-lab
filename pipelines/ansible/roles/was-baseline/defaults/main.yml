@@ -1,0 +1,23 @@
+---
+# roles/was-baseline/defaults/main.yml
+
+was_install_dir: /opt/IBM/WebSphere/AppServer
+was_profile_dir: "{{ was_install_dir }}/profiles/AppSrv01"
+was_apps_dir: "{{ was_profile_dir }}/installedApps/DefaultCell01"
+was_media_dir: /opt/was-media
+was_user: wasadmin
+was_group: wasadmin
+
+# Path on the Ansible controller where the Semeru JDK 8 RPM is staged
+jdk_rpm_path: /tmp/ibm-semeru-open-8-jdk.rpm
+
+# Public download URL for the IBM Semeru JDK 8 RPM (RHEL/CentOS)
+# Override in group_vars/host_vars if using a different platform or mirror
+semeru_jdk_rpm_url: "https://github.com/ibmruntimes/semeru8-binaries/releases/download/jdk8u422-b05_openj9-0.46.0/ibm-semeru-open-8_x64_linux_8.0.422.5_openj9-0.46.0.tar.gz"
+
+# WAS install archive URL — IBM Installation Manager / WAS base archive
+# In a real environment this should point to your internal Artifactory/Nexus mirror
+was_install_archive_url: "https://your-internal-mirror/was/9.0/was-base-9.0.zip"
+
+# WAS package repository URL used in the silent response file
+was_repository_url: "https://your-internal-mirror/was/9.0/repository"

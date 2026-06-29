@@ -1,0 +1,165 @@
+---
+# roles/was-baseline/tasks/main.yml
+# Installs IBM Semeru JDK 8, creates the WAS user/directories, and installs
+# WebSphere Application Server Traditional using a silent response file.
+
+- name: Ensure required packages are present
+  ansible.builtin.package:
+    name:
+      - unzip
+      - curl
+      - tar
+    state: present
+
+- name: Create WAS group
+  ansible.builtin.group:
+    name: "{{ was_group }}"
+    state: present
+
+- name: Create WAS user
+  ansible.builtin.user:
+    name: "{{ was_user }}"
+    group: "{{ was_group }}"
+    shell: /bin/bash
+    home: "/home/{{ was_user }}"
+    create_home: true
+    state: present
+
+# ── IBM Semeru JDK 8 ──────────────────────────────────────────────────────────
+
+- name: Check if IBM Semeru JDK 8 is already installed
+  ansible.builtin.stat:
+    path: /usr/bin/java
+  register: java_binary
+
+- name: Download IBM Semeru JDK 8 RPM
+  ansible.builtin.get_url:
+    url: "{{ semeru_jdk_rpm_url }}"
+    dest: "{{ jdk_rpm_path }}"
+    mode: "0644"
+  when: not java_binary.stat.exists
+
+- name: Install IBM Semeru JDK 8 RPM
+  ansible.builtin.package:
+    name: "{{ jdk_rpm_path }}"
+    state: present
+    disable_gpg_check: true
+  when: not java_binary.stat.exists
+
+- name: Verify Java version
+  ansible.builtin.command: java -version
+  register: java_version_out
+  changed_when: false
+  failed_when: java_version_out.rc != 0
+
+# ── WAS Installation directories ─────────────────────────────────────────────
+
+- name: Ensure WAS install root exists
+  ansible.builtin.file:
+    path: "{{ was_install_dir }}"
+    state: directory
+    owner: "{{ was_user }}"
+    group: "{{ was_group }}"
+    mode: "0755"
+
+- name: Ensure WAS install media staging directory exists
+  ansible.builtin.file:
+    path: "{{ was_media_dir }}"
+    state: directory
+    owner: "{{ was_user }}"
+    group: "{{ was_group }}"
+    mode: "0755"
+
+# ── WAS Silent Install ────────────────────────────────────────────────────────
+
+- name: Check if WAS is already installed
+  ansible.builtin.stat:
+    path: "{{ was_install_dir }}/bin/wsadmin.sh"
+  register: was_binary
+
+- name: Download WAS install archive
+  ansible.builtin.get_url:
+    url: "{{ was_install_archive_url }}"
+    dest: "{{ was_media_dir }}/was-install.zip"
+    mode: "0644"
+  when: not was_binary.stat.exists
+
+- name: Unpack WAS install archive
+  ansible.builtin.unarchive:
+    src: "{{ was_media_dir }}/was-install.zip"
+    dest: "{{ was_media_dir }}"
+    remote_src: true
+    creates: "{{ was_media_dir }}/install"
+  when: not was_binary.stat.exists
+
+- name: Template WAS silent install response file
+  ansible.builtin.template:
+    src: was-response.xml.j2
+    dest: "{{ was_media_dir }}/response.xml"
+    owner: "{{ was_user }}"
+    group: "{{ was_group }}"
+    mode: "0644"
+  when: not was_binary.stat.exists
+
+- name: Run WAS silent installer
+  ansible.builtin.command:
+    cmd: >
+      {{ was_media_dir }}/install/imcl input {{ was_media_dir }}/response.xml
+      -log /tmp/was-install.log
+      -acceptLicense
+    creates: "{{ was_install_dir }}/bin/wsadmin.sh"
+  become_user: "{{ was_user }}"
+  when: not was_binary.stat.exists
+  register: was_install_result
+  failed_when: was_install_result.rc is defined and was_install_result.rc != 0
+
+# ── WAS Profile ───────────────────────────────────────────────────────────────
+
+- name: Check if AppSrv01 profile exists
+  ansible.builtin.stat:
+    path: "{{ was_profile_dir }}/bin/startServer.sh"
+  register: was_profile
+
+- name: Create AppSrv01 profile
+  ansible.builtin.command:
+    cmd: >
+      {{ was_install_dir }}/bin/manageprofiles.sh -create
+      -profileName AppSrv01
+      -profilePath {{ was_profile_dir }}
+      -templatePath {{ was_install_dir }}/profileTemplates/default
+      -serverName server1
+      -nodeName {{ inventory_hostname }}Node01
+      -cellName {{ inventory_hostname }}Cell01
+      -hostName {{ ansible_host }}
+    creates: "{{ was_profile_dir }}/bin/startServer.sh"
+  become_user: "{{ was_user }}"
+  when: not was_profile.stat.exists
+
+# ── WAS Service ───────────────────────────────────────────────────────────────
+
+- name: Create systemd service unit for WAS
+  ansible.builtin.template:
+    src: was.service.j2
+    dest: /etc/systemd/system/was.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart WAS
+
+- name: Enable and start WAS service
+  ansible.builtin.service:
+    name: was
+    state: started
+    enabled: true
+
+- name: Wait for WAS admin console to respond
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:9060/ibm/console"
+    status_code: 200
+    validate_certs: false
+  register: was_health
+  until: was_health.status == 200
+  retries: 18
+  delay: 10

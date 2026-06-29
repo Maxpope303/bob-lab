@@ -1,0 +1,157 @@
+name: Python Flask CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/python-flask/**'
+  pull_request:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/python-flask/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/pharmacy-analytics
+  WORKING_DIR: pipelines/python-flask
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  lint:
+    name: Lint (flake8)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run flake8
+        run: flake8 pharmacy_analytics/ --max-line-length=120 --count --statistics
+
+  security:
+    name: Security Scan (bandit + safety)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run bandit (SAST)
+        run: bandit -r pharmacy_analytics/ -ll
+        continue-on-error: true
+
+      - name: Run safety (dependency CVEs)
+        run: safety check -r requirements.txt
+        continue-on-error: true
+
+  test:
+    name: Tests & Coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest with coverage
+        run: pytest
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-coverage
+          path: ${{ env.WORKING_DIR }}/coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ${{ env.WORKING_DIR }}/coverage.xml
+          flags: python-flask
+          fail_ci_if_error: false
+
+  container-build:
+    name: Build Container Image
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install podman
+
+      - name: Build container image
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          podman build -t pharmacy-analytics:${{ github.sha }} .
+          podman tag pharmacy-analytics:${{ github.sha }} pharmacy-analytics:latest
+
+      - name: Save container image
+        working-directory: ${{ env.WORKING_DIR }}
+        run: podman save pharmacy-analytics:${{ github.sha }} -o pharmacy-analytics-image.tar
+
+      - name: Upload container artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-container-image
+          path: ${{ env.WORKING_DIR }}/pharmacy-analytics-image.tar
+          retention-days: 7
+
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, security, test, container-build]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "# Python Flask Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lint**: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security**: ${{ needs.security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container**: ${{ needs.container-build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+# Made with Bob

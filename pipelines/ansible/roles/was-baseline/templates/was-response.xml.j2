@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- WAS silent install response file — templated by Ansible -->
+<agent-input>
+  <server>
+    <repository location="{{ was_repository_url }}"/>
+  </server>
+  <profile id="IBM WebSphere Application Server V9.0"
+           installLocation="{{ was_install_dir }}">
+    <data key="user.import.profile" value="false"/>
+  </profile>
+  <install>
+    <offering id="com.ibm.websphere.BASE.v90"
+              profile="IBM WebSphere Application Server V9.0"
+              features="core.feature"
+              installFixes="none"/>
+  </install>
+</agent-input>

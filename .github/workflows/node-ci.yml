@@ -1,0 +1,194 @@
+name: Node React CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/node-react/**'
+  pull_request:
+    branches: [main, demo-modernized]
+    paths:
+      - 'pipelines/node-react/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/pharmacy-dashboard-ui
+  WORKING_DIR: pipelines/node-react
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npm run type-check
+
+      - name: ESLint
+        run: npm run lint
+
+  test:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node-coverage
+          path: ${{ env.WORKING_DIR }}/coverage/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ${{ env.WORKING_DIR }}/coverage/lcov.info
+          flags: node-react
+          fail_ci_if_error: false
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pharmacy-ui-dist
+          path: ${{ env.WORKING_DIR }}/dist/
+          retention-days: 30
+
+  container-build:
+    name: Build Container Image
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pharmacy-ui-dist
+          path: ${{ env.WORKING_DIR }}/dist/
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install podman
+
+      - name: Build container image
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          podman build -t pharmacy-dashboard-ui:${{ github.sha }} .
+          podman tag pharmacy-dashboard-ui:${{ github.sha }} pharmacy-dashboard-ui:latest
+
+      - name: Save container image
+        working-directory: ${{ env.WORKING_DIR }}
+        run: podman save pharmacy-dashboard-ui:${{ github.sha }} -o pharmacy-ui-image.tar
+
+      - name: Upload container artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-container-image
+          path: ${{ env.WORKING_DIR }}/pharmacy-ui-image.tar
+          retention-days: 7
+
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test, security-audit, build, container-build]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "# Node React Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lint & Type Check**: ${{ needs.lint-and-typecheck.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security Audit**: ${{ needs.security-audit.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build**: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container**: ${{ needs.container-build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+# Made with Bob

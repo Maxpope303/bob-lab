@@ -1,0 +1,80 @@
+# ── Global ────────────────────────────────────────────────────────────────────
+replicaCount: 1
+imageRegistry: ghcr.io
+imageRepository: OWNER/REPO
+
+# ── Java Backend (Liberty) ────────────────────────────────────────────────────
+javaBackend:
+  enabled: true
+  image:
+    name: simple-pharmacy
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 9080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  livenessProbe:
+    httpGet:
+      path: /simple-pharmacy/
+      port: 9080
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /simple-pharmacy/
+      port: 9080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+# ── React UI ──────────────────────────────────────────────────────────────────
+reactUi:
+  enabled: true
+  image:
+    name: pharmacy-dashboard-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Python Analytics ──────────────────────────────────────────────────────────
+analytics:
+  enabled: true
+  image:
+    name: pharmacy-analytics
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 5000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  host: pharmacy.example.com
+  tls:
+    enabled: false
+    secretName: pharmacy-tls
+
+# ── Image Pull Secrets ────────────────────────────────────────────────────────
+imagePullSecrets: []
+# - name: ghcr-credentials

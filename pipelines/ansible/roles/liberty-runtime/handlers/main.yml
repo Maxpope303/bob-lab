@@ -1,0 +1,11 @@
+---
+# roles/liberty-runtime/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Liberty
+  ansible.builtin.service:
+    name: wlp
+    state: restarted

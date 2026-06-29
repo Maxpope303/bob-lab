@@ -1,0 +1,101 @@
+name: Deployment Status
+
+# Listens for completions from all deployment-capable pipelines and posts
+# a single joined summary so you can see the full chain in one place.
+
+on:
+  workflow_run:
+    workflows:
+      - "Java Modernization CI/CD Pipeline"
+      - "Helm Chart Pipeline"
+      - "Ansible Playbook Pipeline"
+    types: [completed]
+
+jobs:
+  summarise:
+    name: Deployment Chain Summary
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Fetch recent workflow runs
+        id: runs
+        run: |
+          # Fetch last run of each pipeline on this branch
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          REPO="${{ github.repository }}"
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+
+          fetch_run() {
+            local workflow="$1"
+            curl -s \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$(echo $workflow | tr ' ' '%20')/runs?branch=$BRANCH&per_page=1" \
+              | jq -r '.workflow_runs[0] | "\(.name)|\(.conclusion // "in_progress")|\(.html_url)|\(.head_sha[0:7])"'
+          }
+
+          JAVA=$(fetch_run  "java-ci.yml")
+          HELM=$(fetch_run  "helm-lint.yml")
+          ANSIBLE=$(fetch_run "ansible-ci.yml")
+
+          # Store as outputs
+          echo "java=$JAVA"       >> $GITHUB_OUTPUT
+          echo "helm=$HELM"       >> $GITHUB_OUTPUT
+          echo "ansible=$ANSIBLE" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH"   >> $GITHUB_OUTPUT
+          echo "sha=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+
+      - name: Write deployment chain summary
+        run: |
+          BRANCH="${{ steps.runs.outputs.branch }}"
+          SHA="${{ steps.runs.outputs.sha }}"
+
+          status_emoji() {
+            case "$1" in
+              success)     echo "✅" ;;
+              failure)     echo "❌" ;;
+              cancelled)   echo "⏹️" ;;
+              in_progress) echo "⏳" ;;
+              *)           echo "⚪" ;;
+            esac
+          }
+
+          parse_field() { echo "$1" | cut -d'|' -f"$2"; }
+
+          JAVA_NAME=$(parse_field "${{ steps.runs.outputs.java }}" 1)
+          JAVA_CONC=$(parse_field "${{ steps.runs.outputs.java }}" 2)
+          JAVA_URL=$( parse_field "${{ steps.runs.outputs.java }}" 3)
+          JAVA_SHA=$( parse_field "${{ steps.runs.outputs.java }}" 4)
+
+          HELM_NAME=$(parse_field "${{ steps.runs.outputs.helm }}" 1)
+          HELM_CONC=$(parse_field "${{ steps.runs.outputs.helm }}" 2)
+          HELM_URL=$( parse_field "${{ steps.runs.outputs.helm }}" 3)
+
+          ANS_NAME=$(parse_field "${{ steps.runs.outputs.ansible }}" 1)
+          ANS_CONC=$(parse_field "${{ steps.runs.outputs.ansible }}" 2)
+          ANS_URL=$( parse_field "${{ steps.runs.outputs.ansible }}" 3)
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # Deployment Chain — \`$BRANCH\` @ \`$JAVA_SHA\`
+
+          | Pipeline | Status | Run |
+          |---|---|---|
+          | Java Build & Push | $(status_emoji $JAVA_CONC) \`$JAVA_CONC\` | [View]($JAVA_URL) |
+          | Helm Deploy       | $(status_emoji $HELM_CONC) \`$HELM_CONC\` | [View]($HELM_URL) |
+          | Ansible Deploy    | $(status_emoji $ANS_CONC) \`$ANS_CONC\`  | [View]($ANS_URL) |
+
+          **Triggered by**: ${{ github.event.workflow_run.name }} — ${{ github.event.workflow_run.conclusion }}
+          **Commit**: \`${{ github.event.workflow_run.head_sha }}\`
+          **Actor**: ${{ github.event.workflow_run.triggering_actor.login }}
+          EOF
+
+      - name: Notify on failure
+        if: github.event.workflow_run.conclusion == 'failure'
+        run: |
+          echo "::warning::Deployment chain broken — ${{ github.event.workflow_run.name }} failed on ${{ github.event.workflow_run.head_branch }}"
+          echo "Review run: ${{ github.event.workflow_run.html_url }}"
+
+# Made with Bob

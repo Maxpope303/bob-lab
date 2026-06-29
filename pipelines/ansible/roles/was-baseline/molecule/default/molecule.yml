@@ -1,0 +1,26 @@
+---
+# roles/was-baseline/molecule/default/molecule.yml
+driver:
+  name: docker
+
+platforms:
+  - name: was-baseline-test
+    image: registry.access.redhat.com/ubi8/ubi:latest
+    pre_build_image: true
+    privileged: false
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      was-baseline-test:
+        was_install_dir: /opt/IBM/WebSphere/AppServer
+        was_profile_dir: /opt/IBM/WebSphere/AppServer/profiles/AppSrv01
+        was_user: root
+        was_group: root
+        jdk_rpm_path: /tmp/ibm-semeru-open-8-jdk.rpm
+
+verifier:
+  name: ansible

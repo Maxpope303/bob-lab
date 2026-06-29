@@ -1,0 +1,11 @@
+---
+# group_vars/liberty_servers.yml — Variables for Liberty hosts.
+
+liberty_install_dir: /opt/ibm/wlp
+liberty_user_dir: "{{ liberty_install_dir }}/usr"
+liberty_apps_dir: "{{ liberty_user_dir }}/servers/defaultServer/apps"
+liberty_user: wlpadmin
+liberty_group: wlpadmin
+
+# Path to the WAR file on the Ansible controller
+war_file_path: "{{ playbook_dir }}/../../../simple-pharmacy-twas-j8-struts-V2/target/simple-pharmacy.war"

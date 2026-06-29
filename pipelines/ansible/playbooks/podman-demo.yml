@@ -1,0 +1,214 @@
+---
+# playbooks/podman-demo.yml
+#
+# Runs the entire Simple Pharmacy demo stack locally using Podman —
+# no real servers required. Pulls the pre-built container images and
+# starts them as rootless Podman containers on localhost.
+#
+# Prerequisites on the control node:
+#   - Ansible >= 2.15
+#   - Podman installed and in PATH
+#   - ansible-galaxy collection install -r requirements.yml
+#
+# Usage:
+#   ansible-playbook playbooks/podman-demo.yml
+#   ansible-playbook playbooks/podman-demo.yml --tags build   # build WAR locally first
+#   ansible-playbook playbooks/podman-demo.yml --tags teardown # stop and remove everything
+
+- name: Simple Pharmacy — Local Podman Demo
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    # ── Image references ──────────────────────────────────────────────────────
+    registry: ghcr.io
+    image_repo: "OWNER/REPO"   # replace with your GitHub org/repo
+
+    java_image:     "{{ registry }}/{{ image_repo }}/simple-pharmacy:latest"
+    ui_image:       "{{ registry }}/{{ image_repo }}/pharmacy-dashboard-ui:latest"
+    analytics_image: "{{ registry }}/{{ image_repo }}/pharmacy-analytics:latest"
+
+    # ── Container names ───────────────────────────────────────────────────────
+    java_container:      pharmacy-java
+    ui_container:        pharmacy-ui
+    analytics_container: pharmacy-analytics
+
+    # ── Network ───────────────────────────────────────────────────────────────
+    demo_network: pharmacy-demo
+
+    # ── Ports (host:container) ────────────────────────────────────────────────
+    java_port:      "9080:9080"
+    ui_port:        "3000:3000"
+    analytics_port: "5000:5000"
+
+  # ── Verify Podman is available ─────────────────────────────────────────────
+  pre_tasks:
+    - name: Check Podman is installed
+      ansible.builtin.command: podman --version
+      register: podman_version
+      changed_when: false
+      failed_when: podman_version.rc != 0
+
+    - name: Show Podman version
+      ansible.builtin.debug:
+        msg: "Using {{ podman_version.stdout }}"
+
+  tasks:
+
+    # ── Optionally build the Java WAR locally ─────────────────────────────────
+    - name: Build Java WAR with Maven
+      ansible.builtin.command:
+        cmd: mvn clean package -DskipTests -B
+        chdir: "{{ playbook_dir }}/../../../simple-pharmacy-twas-j8-struts-V2"
+      register: maven_build
+      changed_when: maven_build.rc == 0
+      tags: [build, never]   # only runs when --tags build is passed
+
+    # ── Podman network ────────────────────────────────────────────────────────
+    - name: Create demo Podman network
+      containers.podman.podman_network:
+        name: "{{ demo_network }}"
+        state: present
+      tags: [start, setup]
+
+    # ── Java Liberty backend ──────────────────────────────────────────────────
+    - name: Pull Java pharmacy image
+      containers.podman.podman_image:
+        name: "{{ java_image }}"
+        state: present
+      tags: [start, java]
+
+    - name: Start Java pharmacy container
+      containers.podman.podman_container:
+        name: "{{ java_container }}"
+        image: "{{ java_image }}"
+        state: started
+        network: "{{ demo_network }}"
+        ports:
+          - "{{ java_port }}"
+        restart_policy: on-failure
+        restart_retries: 3
+        env:
+          WLP_SKIP_MAXPERMSIZE: "true"
+        healthcheck: "curl -sf http://localhost:9080/simple-pharmacy/ || exit 1"
+        healthcheck_interval: 30s
+        healthcheck_retries: 5
+        healthcheck_start_period: 60s
+      tags: [start, java]
+
+    - name: Wait for Java backend to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:9080/simple-pharmacy/"
+        status_code: 200
+      register: java_health
+      until: java_health.status == 200
+      retries: 12
+      delay: 10
+      tags: [start, java]
+
+    # ── Python analytics service ──────────────────────────────────────────────
+    - name: Pull analytics image
+      containers.podman.podman_image:
+        name: "{{ analytics_image }}"
+        state: present
+      tags: [start, analytics]
+
+    - name: Start analytics container
+      containers.podman.podman_container:
+        name: "{{ analytics_container }}"
+        image: "{{ analytics_image }}"
+        state: started
+        network: "{{ demo_network }}"
+        ports:
+          - "{{ analytics_port }}"
+        restart_policy: on-failure
+        env:
+          PHARMACY_API_BASE: "http://{{ java_container }}:9080/simple-pharmacy"
+        healthcheck: "curl -sf http://localhost:5000/health || exit 1"
+        healthcheck_interval: 20s
+        healthcheck_retries: 3
+        healthcheck_start_period: 15s
+      tags: [start, analytics]
+
+    - name: Wait for analytics service to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:5000/health"
+        status_code: 200
+      register: analytics_health
+      until: analytics_health.status == 200
+      retries: 6
+      delay: 5
+      tags: [start, analytics]
+
+    # ── React UI ──────────────────────────────────────────────────────────────
+    - name: Pull UI image
+      containers.podman.podman_image:
+        name: "{{ ui_image }}"
+        state: present
+      tags: [start, ui]
+
+    - name: Start UI container
+      containers.podman.podman_container:
+        name: "{{ ui_container }}"
+        image: "{{ ui_image }}"
+        state: started
+        network: "{{ demo_network }}"
+        ports:
+          - "{{ ui_port }}"
+        restart_policy: on-failure
+        env:
+          VITE_API_BASE_URL: "http://{{ java_container }}:9080"
+      tags: [start, ui]
+
+    # ── Status summary ────────────────────────────────────────────────────────
+    - name: Gather container status
+      ansible.builtin.command: podman ps --filter "network={{ demo_network }}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+      register: container_status
+      changed_when: false
+      tags: [start, status]
+
+    - name: Print demo stack status
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║          Simple Pharmacy Demo Stack — Running        ║
+          ╠══════════════════════════════════════════════════════╣
+          ║  Java backend  →  http://localhost:9080/simple-pharmacy/  ║
+          ║  Analytics API →  http://localhost:5000/health            ║
+          ║  React UI      →  http://localhost:3000                   ║
+          ╚══════════════════════════════════════════════════════╝
+
+          Container status:
+          {{ container_status.stdout }}
+      tags: [start, status]
+
+    # ── Teardown ──────────────────────────────────────────────────────────────
+    - name: Stop and remove Java container
+      containers.podman.podman_container:
+        name: "{{ java_container }}"
+        state: absent
+      tags: [teardown, never]
+
+    - name: Stop and remove analytics container
+      containers.podman.podman_container:
+        name: "{{ analytics_container }}"
+        state: absent
+      tags: [teardown, never]
+
+    - name: Stop and remove UI container
+      containers.podman.podman_container:
+        name: "{{ ui_container }}"
+        state: absent
+      tags: [teardown, never]
+
+    - name: Remove demo Podman network
+      containers.podman.podman_network:
+        name: "{{ demo_network }}"
+        state: absent
+      tags: [teardown, never]
+
+    - name: Confirm teardown complete
+      ansible.builtin.debug:
+        msg: "Demo stack stopped and removed."
+      tags: [teardown, never]
