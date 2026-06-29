@@ -1,16 +1,16 @@
 # Bob Lab - Java Modernization Workspace
 
-[![Java CI](https://github.com/OWNER/REPO/actions/workflows/java-ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/java-ci.yml)
-[![Node React CI](https://github.com/OWNER/REPO/actions/workflows/node-ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/node-ci.yml)
-[![Python Flask CI](https://github.com/OWNER/REPO/actions/workflows/python-ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/python-ci.yml)
-[![Terraform Pipeline](https://github.com/OWNER/REPO/actions/workflows/terraform-plan.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/terraform-plan.yml)
-[![Helm Chart Pipeline](https://github.com/OWNER/REPO/actions/workflows/helm-lint.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/helm-lint.yml)
-[![Ansible Pipeline](https://github.com/OWNER/REPO/actions/workflows/ansible-ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ansible-ci.yml)
-[![Release](https://github.com/OWNER/REPO/actions/workflows/release.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/release.yml)
-[![codecov](https://codecov.io/gh/OWNER/REPO/branch/main/graph/badge.svg)](https://codecov.io/gh/OWNER/REPO)
+[![Java CI](https://github.com/Maxpope303/bob-lab/actions/workflows/java-ci.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/java-ci.yml)
+[![Node React CI](https://github.com/Maxpope303/bob-lab/actions/workflows/node-ci.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/node-ci.yml)
+[![Python Flask CI](https://github.com/Maxpope303/bob-lab/actions/workflows/python-ci.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/python-ci.yml)
+[![Terraform Pipeline](https://github.com/Maxpope303/bob-lab/actions/workflows/terraform-plan.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/terraform-plan.yml)
+[![Helm Chart Pipeline](https://github.com/Maxpope303/bob-lab/actions/workflows/helm-lint.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/helm-lint.yml)
+[![Ansible Pipeline](https://github.com/Maxpope303/bob-lab/actions/workflows/ansible-ci.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/ansible-ci.yml)
+[![Release](https://github.com/Maxpope303/bob-lab/actions/workflows/release.yml/badge.svg)](https://github.com/Maxpope303/bob-lab/actions/workflows/release.yml)
+[![codecov](https://codecov.io/gh/Maxpope303/bob-lab/branch/main/graph/badge.svg)](https://codecov.io/gh/Maxpope303/bob-lab)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **Note**: Replace `OWNER/REPO` in the badge URLs with your actual GitHub repository path.
+> **Note**: Replace `Maxpope303/bob-lab` in the badge URLs with your actual GitHub repository path.
 
 A polyglot workspace for Java application modernization and migration projects.
 The core subject is a legacy Java EE pharmacy application; the surrounding modules

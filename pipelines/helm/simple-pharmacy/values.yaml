@@ -1,7 +1,7 @@
 # ── Global ────────────────────────────────────────────────────────────────────
 replicaCount: 1
 imageRegistry: ghcr.io
-imageRepository: OWNER/REPO
+imageRepository: Maxpope303/bob-lab
 
 # ── Java Backend (Liberty) ────────────────────────────────────────────────────
 javaBackend:
