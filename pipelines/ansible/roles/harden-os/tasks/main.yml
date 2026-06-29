@@ -1,0 +1,38 @@
+---
+# roles/harden-os/tasks/main.yml
+# Applies baseline OS hardening to pharmacy servers.
+
+- name: Disable SSH password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+  notify: Restart SSHD
+
+- name: Ensure firewalld is installed
+  ansible.builtin.package:
+    name: firewalld
+    state: present
+
+- name: Start and enable firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Open required ports
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    permanent: true
+    state: enabled
+  loop:
+    - "22/tcp"
+    - "9080/tcp"
+    - "9443/tcp"
+    - "5000/tcp"
+  notify: Reload firewalld
+
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: UTC

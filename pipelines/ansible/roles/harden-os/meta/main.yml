@@ -1,0 +1,13 @@
+---
+# roles/harden-os/meta/main.yml
+
+galaxy_info:
+  author: devops-team
+  description: Baseline OS hardening for pharmacy servers (firewall, SSH, timezone)
+  license: Apache-2.0
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+
+dependencies: []

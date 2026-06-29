@@ -1,8 +1,7 @@
 ---
 # requirements.yml
-# Install with: ansible-galaxy collection install -r requirements.yml
-#
-# These collections are required by the playbooks and roles in this project.
+# Install with: ansible-galaxy install -r requirements.yml
+# (installs both roles and collections in one command)
 
 collections:
   # POSIX-platform modules: firewalld, timezone, sysctl

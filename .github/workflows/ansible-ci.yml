@@ -58,8 +58,8 @@ jobs:
       - name: Install Ansible and lint tools
         run: pip install ansible ansible-lint yamllint
 
-      - name: Install Galaxy collections
-        run: ansible-galaxy collection install -r requirements.yml
+      - name: Install Ansible roles and collections
+        run: ansible-galaxy install -r requirements.yml
 
       - name: Run yamllint
         run: yamllint -c .yamllint .
@@ -83,8 +83,8 @@ jobs:
       - name: Install Ansible
         run: pip install ansible
 
-      - name: Install Galaxy collections
-        run: ansible-galaxy collection install -r requirements.yml
+      - name: Install Ansible roles and collections
+        run: ansible-galaxy install -r requirements.yml
 
       - name: Syntax check — site.yml
         run: ansible-playbook site.yml --syntax-check -i inventories/dev/hosts.ini
@@ -151,10 +151,10 @@ jobs:
             echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install Ansible and Galaxy collections
+      - name: Install Ansible roles and collections
         run: |
           pip install ansible
-          ansible-galaxy collection install -r requirements.yml
+          ansible-galaxy install -r requirements.yml
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Write SSH key

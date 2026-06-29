@@ -1,0 +1,12 @@
+---
+# roles/harden-os/handlers/main.yml
+
+- name: Restart SSHD
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+
+- name: Reload firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: reloaded
