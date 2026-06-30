@@ -53,7 +53,7 @@ variable "java_image" {
 variable "ui_image" {
   description = "Container image URI for the React UI"
   type        = string
-  default     = "ghcr.io/OWNER/REPO/pharmacy-dashboard-ui:latest"
+  default     = "ghcr.io/maxpope303/bob-lab/pharmacy-dashboard-ui:latest"
 }
 
 variable "analytics_image" {

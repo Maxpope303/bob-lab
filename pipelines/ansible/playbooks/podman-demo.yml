@@ -23,7 +23,7 @@
   vars:
     # ── Image references ──────────────────────────────────────────────────────
     registry: ghcr.io
-    image_repo: "Maxpope303/bob-lab"
+    image_repo: "maxpope303/bob-lab"
 
     java_image:     "{{ registry }}/{{ image_repo }}/simple-pharmacy:latest"
     ui_image:       "{{ registry }}/{{ image_repo }}/pharmacy-dashboard-ui:latest"
