@@ -23,7 +23,7 @@
   vars:
     # ── Image references ──────────────────────────────────────────────────────
     registry: ghcr.io
-    image_repo: "OWNER/REPO"   # replace with your GitHub org/repo
+    image_repo: "Maxpope303/bob-lab"
 
     java_image:     "{{ registry }}/{{ image_repo }}/simple-pharmacy:latest"
     ui_image:       "{{ registry }}/{{ image_repo }}/pharmacy-dashboard-ui:latest"
