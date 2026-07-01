@@ -185,7 +185,8 @@ jobs:
             -i inventories/dev/hosts.ini \
             --private-key ~/.ssh/id_rsa \
             -u ansible \
-            -e "liberty_image_tag=${{ steps.resolve-tag.outputs.tag }}"
+            -e "liberty_image_tag=${{ steps.resolve-tag.outputs.tag }}" \
+            -e "ghcr_token=${{ secrets.GITHUB_TOKEN }}"
 
       - name: Report deployment to summary
         if: always()

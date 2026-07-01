@@ -54,6 +54,14 @@
       ansible.builtin.debug:
         msg: "Using {{ podman_version.stdout }}"
 
+    - name: Log in to GHCR
+      containers.podman.podman_login:
+        registry: "{{ registry }}"
+        username: "{{ ghcr_username | default('x-access-token') }}"
+        password: "{{ ghcr_token }}"
+      no_log: true
+      when: ghcr_token is defined
+
   tasks:
 
     # ── Optionally build the Java WAR locally ─────────────────────────────────
